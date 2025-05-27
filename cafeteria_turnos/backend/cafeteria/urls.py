@@ -1,9 +1,5 @@
 from django.urls import path
-from .views import (
-    CafeteriaListView, CafeteriaDetailView,
-    CafeteriaCreateView, CafeteriaUpdateView, CafeteriaDeleteView,
-    CambiarEstadoCafeteriaView
-)
+from .views import CafeteriaListView, CafeteriaDetailView, CafeteriaCreateView, CafeteriaUpdateView, CafeteriaDeleteView, CambiarEstadoCafeteriaView
 
 urlpatterns = [
     path('', CafeteriaListView.as_view(), name='cafeteria_list'),

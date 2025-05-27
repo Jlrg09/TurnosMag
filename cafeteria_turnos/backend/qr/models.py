@@ -2,10 +2,10 @@ import secrets
 from django.utils import timezone
 from datetime import timedelta
 from django.db import models
-from cafeteria.models import Cafeteria
 
+# Usa cadena de texto para evitar import circular
 class QRActivo(models.Model):
-    cafeteria = models.ForeignKey(Cafeteria, on_delete=models.CASCADE)
+    cafeteria = models.ForeignKey('cafeteria.Cafeteria', on_delete=models.CASCADE)
     codigo = models.CharField(max_length=100)  # Valor actual del QR dinámico
     generado_en = models.DateTimeField(auto_now_add=True)
     expiracion = models.DateTimeField()  # Cuándo expira este QR

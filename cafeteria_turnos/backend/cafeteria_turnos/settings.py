@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,6 +25,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'channels',  # Django Channels para WebSockets
     # Apps propias
     'usuarios',
     'cafeteria',
@@ -62,6 +64,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'cafeteria_turnos.wsgi.application'
+ASGI_APPLICATION = 'cafeteria_turnos.asgi.application'  # Para Channels y WebSockets
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -71,6 +74,13 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
+}
+
+# Channels: Configuración para desarrollo (en memoria, NO uses en producción)
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
 }
 
 # Password validation
@@ -126,7 +136,6 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Simple JWT settings (puedes personalizar según tus requerimientos)
-from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=6),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),

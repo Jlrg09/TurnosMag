@@ -2,8 +2,8 @@ from django.db import models
 
 class Cafeteria(models.Model):
     ESTADOS = (
-        ('abierta', 'Abierta'),
-        ('cerrada', 'Cerrada'),
+        ('abierto', 'Abierto'),
+        ('cerrado', 'Cerrado'),
         ('reabasteciendo', 'Reabasteciendo'),
     )
     nombre = models.CharField(max_length=100)

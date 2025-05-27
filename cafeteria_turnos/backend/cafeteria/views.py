@@ -39,7 +39,10 @@ class CambiarEstadoCafeteriaView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, pk):
-        cafeteria = Cafeteria.objects.get(pk=pk)
+        try:
+            cafeteria = Cafeteria.objects.get(pk=pk)
+        except Cafeteria.DoesNotExist:
+            return Response({'error': 'Cafetería no encontrada'}, status=status.HTTP_404_NOT_FOUND)
         nuevo_estado = request.data.get('estado')
         if nuevo_estado in dict(Cafeteria.ESTADOS):
             cafeteria.estado = nuevo_estado

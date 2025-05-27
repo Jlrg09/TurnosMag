@@ -6,12 +6,20 @@ import AdminPage from "./pages/AdminPage";
 import VistaPage from "./pages/VistaPage";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import QRPage from "./pages/QrPage";
+import TurnoActual from "./pages/TurnoActual";
 
 // Ruta protegida: solo deja pasar si hay usuario autenticado
-const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { auth } = useAuth();
-  // El token puede llamarse 'access' según tu AuthContext, ajusta si es necesario
-  return auth && auth.access ? <>{children}</> : <Navigate to="/login" />;
+const PrivateRoute: React.FC<{ children: React.ReactNode; role?: string }> = ({ children, role }) => {
+  const { auth, loading } = useAuth();
+  if (loading) return null; // Loader opcional
+  if (!(auth && auth.access)) {
+    return <Navigate to="/login" replace />;
+  }
+  if (role && auth.rol !== role) {
+    if (auth.rol === "estudiante") return <Navigate to="/estudiante" replace />;
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
 };
 
 function App() {
@@ -19,11 +27,16 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+          {/* Rutas públicas */}
+          <Route path="/turno-actual" element={<TurnoActual />} />
+          <Route path="/qr" element={<QRPage />} />
           <Route path="/login" element={<LoginPage />} />
+
+          {/* Rutas privadas */}
           <Route
             path="/estudiante"
             element={
-              <PrivateRoute>
+              <PrivateRoute role="estudiante">
                 <EstudiantePage />
               </PrivateRoute>
             }
@@ -31,7 +44,7 @@ function App() {
           <Route
             path="/admin"
             element={
-              <PrivateRoute>
+              <PrivateRoute role="admin">
                 <AdminPage />
               </PrivateRoute>
             }
@@ -44,16 +57,9 @@ function App() {
               </PrivateRoute>
             }
           />
-          <Route
-            path="/qr"
-            element={
-              <PrivateRoute>
-                <QRPage />
-              </PrivateRoute>
-            }
-          />
-          {/* Ruta comodín para cualquier ruta no definida */}
-          <Route path="*" element={<Navigate to="/login" />} />
+          {/* Ruta por defecto y comodín: siempre al login */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
     </AuthProvider>

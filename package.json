@@ -2,6 +2,7 @@
   "dependencies": {
     "@blackbox-vision/react-qr-reader": "^5.0.0",
     "axios": "^1.9.0",
+    "qrcode.react": "^4.2.0",
     "react-qr-reader": "^3.0.0-beta-1",
     "typescript": "^5.8.3"
   },

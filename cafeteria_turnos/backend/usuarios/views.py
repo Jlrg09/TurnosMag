@@ -4,10 +4,10 @@ from rest_framework.views import APIView
 from .models import Usuario
 from .serializers import (
     UsuarioSerializer, RegistroSerializer,
-    UsuarioUpdateSerializer, PasswordChangeSerializer
+    UsuarioUpdateSerializer, PasswordChangeSerializer,
+    CustomTokenObtainPairSerializer  # <--- Importa el serializer personalizado
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 
 # Registro
@@ -65,15 +65,6 @@ class UsuarioDeleteView(generics.DestroyAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [permissions.IsAdminUser]
 
-# Login customizado con datos extra en el JWT
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['username'] = user.username
-        token['rol'] = user.rol
-        token['codigo_estudiantil'] = user.codigo_estudiantil
-        return token
-
+# Login customizado con datos extra en el JWT y en el response
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer

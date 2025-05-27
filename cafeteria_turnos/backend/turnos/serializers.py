@@ -8,7 +8,16 @@ class TurnoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Turno
-        fields = ['id', 'usuario', 'cafeteria', 'fecha', 'estado', 'generado_en', 'reclamado_en']
+        fields = [
+            'id', 
+            'codigo_turno',  # NUEVO
+            'usuario', 
+            'cafeteria', 
+            'fecha', 
+            'estado', 
+            'generado_en', 
+            'reclamado_en'
+        ]
 
 class PenalizacionSerializer(serializers.ModelSerializer):
     usuario = serializers.StringRelatedField()
