@@ -25,12 +25,22 @@ type Turno = {
     nombre: string;
     estado: string;
   };
+  generado_en?: string;
+  reclamado_en?: string | null;
 };
 
 type Cafeteria = {
   id: number;
   nombre: string;
   estado: string;
+};
+
+type Penalizacion = {
+  id: number;
+  fecha: string;
+  motivo: string;
+  activa: boolean;
+  creada_en: string;
 };
 
 const capitalize = (str?: string) =>
@@ -51,25 +61,52 @@ function getCafeteriaColor(estado?: string) {
   }
 }
 
+// Penalización: segundos restantes de 15 minutos
+function getPenalizacionRestante(creada_en: string) {
+  const PENALIZACION_SEGUNDOS = 15 * 60;
+  const creada = new Date(creada_en).getTime();
+  const ahora = new Date().getTime();
+  const transcurrido = Math.floor((ahora - creada) / 1000);
+  return Math.max(0, PENALIZACION_SEGUNDOS - transcurrido);
+}
+
+function formatTiempo(segundos: number): string {
+  if (segundos <= 0) return "Expirado";
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return (m > 0 ? `${m}m ` : "") + `${s.toString().padStart(2, "0")}s`;
+}
+
 const EstudiantePage: React.FC = () => {
   const { auth, logout } = useAuth();
   const navigate = useNavigate();
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [cafeteria, setCafeteria] = useState<Cafeteria | null>(null);
   const [menu, setMenu] = useState<"perfil" | "turno">("perfil");
+  const [submenu, setSubmenu] = useState<"actual" | "anteriores">("actual");
+
+  // Penalizaciones
+  const [penalizacion, setPenalizacion] = useState<Penalizacion | null>(null);
+  const [penalizacionRestante, setPenalizacionRestante] = useState<number>(0);
+
+  // Turnos
+  const [turnoHoy, setTurnoHoy] = useState<Turno | null>(null);
+  const [turnosAnteriores, setTurnosAnteriores] = useState<Turno[]>([]);
 
   // Turno y QR
   const [scanning, setScanning] = useState(false);
   const [generandoTurno, setGenerandoTurno] = useState(false);
   const [turnoMsg, setTurnoMsg] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [turnoHoy, setTurnoHoy] = useState<Turno | null>(null);
   const [notificacion, setNotificacion] = useState<string | null>(null);
   // Para evitar parpadeos al generar turno
   const [ultimoTurnoGenerado, setUltimoTurnoGenerado] = useState<Turno | null>(null);
   const [mostrandoTurnoNuevo, setMostrandoTurnoNuevo] = useState(false);
 
-  // Evitar múltiples lecturas QR, permite reintentar si cambia el QR
+  // Para saber si ya reclamó turno hoy
+  const [turnoReclamadoHoy, setTurnoReclamadoHoy] = useState<Turno | null>(null);
+
+  // Para QR escaneado (simulado)
   const lastQrValue = useRef<string | null>(null);
 
   // Cargar perfil solo 1 vez
@@ -90,26 +127,61 @@ const EstudiantePage: React.FC = () => {
     // eslint-disable-next-line
   }, []);
 
-  // Cargar turno y cafetería en tiempo real cada 2s
+  // Cargar penalización, turno actual, turnos anteriores y reclamado cada 2s
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    const fetchTurnoYCafeteria = async () => {
+
+    const fetchAll = async () => {
       try {
         const headers = { Authorization: `Bearer ${auth?.access}` };
+        // Penalización actual
+        const penRes = await axios.get(`${API_URL}/turnos/penalizaciones/`, { headers });
+        if (Array.isArray(penRes.data) && penRes.data.length > 0) {
+          setPenalizacion(penRes.data[0]);
+          setPenalizacionRestante(getPenalizacionRestante(penRes.data[0].creada_en));
+        } else {
+          setPenalizacion(null);
+          setPenalizacionRestante(0);
+        }
+        // Turnos del usuario (hoy y anteriores)
         const turnosRes = await axios.get(`${API_URL}/turnos/mios/`, { headers });
         const hoy = new Date().toISOString().slice(0, 10);
         const turnosPendientesHoy = turnosRes.data
           .filter((t: Turno) => t.fecha === hoy && t.estado === "pendiente")
-          .sort((a: Turno, b: Turno) => b.id - a.id);
+          .sort((a: Turno, b: Turno) =>
+            new Date(a.generado_en || a.fecha).getTime() -
+            new Date(b.generado_en || b.fecha).getTime()
+          );
         if (mostrandoTurnoNuevo && ultimoTurnoGenerado) {
           setTurnoHoy(ultimoTurnoGenerado);
         } else {
           setTurnoHoy(turnosPendientesHoy.length > 0 ? turnosPendientesHoy[0] : null);
         }
+        // ¿Ya reclamó algún turno hoy?
+        const turnoReclamado = turnosRes.data.find(
+          (t: Turno) => t.fecha === hoy && t.estado === "reclamado"
+        );
+        setTurnoReclamadoHoy(turnoReclamado ?? null);
+        // Todos los turnos anteriores (excluye el turno actual pendiente)
+        setTurnosAnteriores(
+          turnosRes.data
+            .filter(
+              (t: Turno) =>
+                !(turnosPendientesHoy.length > 0 && t.id === turnosPendientesHoy[0].id)
+            )
+            .sort(
+              (a: Turno, b: Turno) =>
+                new Date(b.generado_en || b.fecha).getTime() -
+                new Date(a.generado_en || a.fecha).getTime()
+            )
+        );
       } catch (err: any) {
-        if (!mostrandoTurnoNuevo) setTurnoHoy(null);
+        setTurnoHoy(null);
+        setTurnosAnteriores([]);
+        setTurnoReclamadoHoy(null);
       }
       try {
+        // Estado cafeteria (pública)
         const cafeteriaRes = await axios.get(`${API_URL}/cafeteria/`);
         if (Array.isArray(cafeteriaRes.data) && cafeteriaRes.data.length > 0)
           setCafeteria(cafeteriaRes.data[0]);
@@ -119,12 +191,98 @@ const EstudiantePage: React.FC = () => {
         setCafeteria(null);
       }
     };
-    fetchTurnoYCafeteria();
-    interval = setInterval(fetchTurnoYCafeteria, 2000);
+
+    fetchAll();
+    interval = setInterval(fetchAll, 2000);
     return () => clearInterval(interval);
     // eslint-disable-next-line
   }, [auth, mostrandoTurnoNuevo, ultimoTurnoGenerado]);
 
+  // Penalización: cuenta regresiva (solo si hay penalización)
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (penalizacion) {
+      timer = setInterval(() => {
+        setPenalizacionRestante(getPenalizacionRestante(penalizacion.creada_en));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [penalizacion]);
+
+  // Lógica de validación para generación de turno
+  function getNoTurnoReason(): string | null {
+    if (
+      cafeteria &&
+      ["cerrado", "cerrada"].includes((cafeteria.estado || "").toLowerCase())
+    ) {
+      return "La cafetería está cerrada";
+    }
+    if (penalizacion && penalizacionRestante > 0) {
+      return "No puedes generar turno porque tienes una penalización activa";
+    }
+    if (turnoHoy) {
+      return "No puedes generar turno porque ya tienes un turno pendiente";
+    }
+    if (turnoReclamadoHoy) {
+      return "No puedes generar un nuevo turno porque ya reclamaste uno hoy";
+    }
+    return null;
+  }
+
+  // GENERAR TURNO - SIMULADO
+  const handleSimularQr = async () => {
+    setGenerandoTurno(true);
+    setTurnoMsg("Generando turno...");
+    const motivo = getNoTurnoReason();
+    if (motivo) {
+      setTurnoMsg(motivo);
+      setGenerandoTurno(false);
+      setTimeout(() => setTurnoMsg(null), 4000);
+      setScanning(false);
+      return;
+    }
+    try {
+      const headers = { Authorization: `Bearer ${auth?.access}` };
+      const res = await axios.post(`${API_URL}/turnos/crear/`, { qr: "simulado" }, { headers });
+      setTurnoMsg(null);
+      setNotificacion("¡Turno generado con éxito!");
+      setUltimoTurnoGenerado({
+        id: res.data.id,
+        codigo_turno: res.data.codigo_turno,
+        fecha: res.data.fecha,
+        estado: res.data.estado,
+        cafeteria: res.data.cafeteria,
+        generado_en: res.data.generado_en,
+        reclamado_en: res.data.reclamado_en,
+      });
+      setMostrandoTurnoNuevo(true);
+      setTurnoHoy({
+        id: res.data.id,
+        codigo_turno: res.data.codigo_turno,
+        fecha: res.data.fecha,
+        estado: res.data.estado,
+        cafeteria: res.data.cafeteria,
+        generado_en: res.data.generado_en,
+        reclamado_en: res.data.reclamado_en,
+      });
+      setTimeout(() => {
+        setUltimoTurnoGenerado(null);
+        setMostrandoTurnoNuevo(false);
+      }, 4000);
+    } catch (err: any) {
+      setTurnoMsg(
+        err.response?.data?.mensaje ||
+          "Error generando turno. Intenta de nuevo."
+      );
+    } finally {
+      setGenerandoTurno(false);
+      setScanning(false);
+    }
+  };
+
+  // Ocultar notificación después de 3 segundos
   useEffect(() => {
     if (notificacion) {
       const timer = setTimeout(() => setNotificacion(null), 3000);
@@ -132,8 +290,10 @@ const EstudiantePage: React.FC = () => {
     }
   }, [notificacion]);
 
+  // Logo
   const logoUrl = "/logo192.png";
 
+  // Mobile-like styles
   const mobileCard = {
     background: "#fff",
     borderRadius: 22,
@@ -145,69 +305,6 @@ const EstudiantePage: React.FC = () => {
     marginLeft: "auto",
     marginRight: "auto",
     fontSize: 18,
-  };
-
-  // Procesa el QR leído
-  const handleQrResult = async (result: any, error: any) => {
-    if (!result?.text || generandoTurno) return;
-
-    // Solo procesa si el texto es distinto al último escaneado
-    if (lastQrValue.current === result.text) return;
-    lastQrValue.current = result.text;
-
-    setGenerandoTurno(true);
-    setTurnoMsg("Verificando QR...");
-
-    try {
-      const headers = { Authorization: `Bearer ${auth?.access}` };
-      const res = await axios.post(
-        `${API_URL}/turnos/crear/`,
-        { qr: result.text },
-        { headers }
-      );
-      setTurnoMsg(null);
-      setNotificacion("¡Turno generado con éxito!");
-      setUltimoTurnoGenerado({
-        id: res.data.id,
-        codigo_turno: res.data.codigo_turno,
-        fecha: res.data.fecha,
-        estado: res.data.estado,
-        cafeteria: res.data.cafeteria,
-      });
-      setMostrandoTurnoNuevo(true);
-      setTurnoHoy({
-        id: res.data.id,
-        codigo_turno: res.data.codigo_turno,
-        fecha: res.data.fecha,
-        estado: res.data.estado,
-        cafeteria: res.data.cafeteria,
-      });
-      setTimeout(() => {
-        setUltimoTurnoGenerado(null);
-        setMostrandoTurnoNuevo(false);
-      }, 4000);
-      setScanning(false); // desmonta el QrReader
-    } catch (err: any) {
-      setTurnoMsg(
-        err?.response?.data?.mensaje ||
-        "El QR no es válido o ya fue usado. Intenta de nuevo."
-      );
-      setTimeout(() => {
-        lastQrValue.current = null;
-        setGenerandoTurno(false);
-      }, 2000);
-    } finally {
-      setGenerandoTurno(false);
-    }
-  };
-
-  // Al cancelar, desmonta el QR Reader y limpia
-  const handleCancelar = () => {
-    setScanning(false);
-    setGenerandoTurno(false);
-    setTurnoMsg(null);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    lastQrValue.current = null;
   };
 
   return (
@@ -489,7 +586,8 @@ const EstudiantePage: React.FC = () => {
                 onClick={() => {
                   setScanning(true);
                   setTurnoMsg(null);
-                  lastQrValue.current = null;
+                  setGenerandoTurno(false);
+                  setTimeout(handleSimularQr, 5000); // Simula escaneo en 5 segundos
                 }}
                 disabled={generandoTurno}
                 style={{
@@ -511,25 +609,28 @@ const EstudiantePage: React.FC = () => {
               </button>
             )}
             {scanning && (
-              <div style={{ width: 320, minHeight: 260, margin: "18px auto", background: "#000", borderRadius: 12 }}>
-                <QrReader
-                  constraints={{ facingMode: "environment" }}
-                  scanDelay={500}
-                  onResult={handleQrResult}
-                  style={{
-                    width: "100%",
-                    minHeight: 240,
-                    borderRadius: 12,
-                    background: "#000",
-                  }}
-                  videoContainerStyle={{
-                    width: "100%",
-                    minHeight: 240,
-                    background: "#000",
-                  }}
-                />
+              <div style={{ maxWidth: 320, margin: "18px auto" }}>
+                <div style={{
+                  width: "100%",
+                  height: 200,
+                  background: "#e9f5e8",
+                  borderRadius: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#20793e",
+                  fontWeight: 700,
+                  fontSize: 20
+                }}>
+                  {turnoMsg ? turnoMsg : "Abriendo cámara..."}
+                </div>
                 <button
-                  onClick={handleCancelar}
+                  onClick={() => {
+                    setScanning(false);
+                    setGenerandoTurno(false);
+                    setTurnoMsg(null);
+                    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+                  }}
                   style={{
                     marginTop: 10,
                     padding: "10px 22px",
@@ -544,11 +645,10 @@ const EstudiantePage: React.FC = () => {
                 >
                   Cancelar
                 </button>
-                <div style={{ marginTop: 12, textAlign: "center", color: "#20793e" }}>{turnoMsg}</div>
               </div>
             )}
             {!scanning && turnoMsg && (
-              <div style={{ marginTop: 12, fontWeight: "bold", color: "#20793e" }}>{turnoMsg}</div>
+              <div style={{ marginTop: 12, fontWeight: "bold", color: "#e74c3c" }}>{turnoMsg}</div>
             )}
           </section>
         )}

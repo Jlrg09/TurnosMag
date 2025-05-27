@@ -1,9 +1,9 @@
 from django.core.management.base import BaseCommand
-from turnos.utils import penalizar_turnos_expirados
+from turnos.utils import penalizar_turnos_no_reclamados
 
 class Command(BaseCommand):
-    help = 'Penaliza automáticamente a los usuarios que no reclamaron su turno a tiempo'
+    help = 'Penaliza turnos no reclamados en 30 segundos'
 
-    def handle(self, *args, **options):
-        penalizar_turnos_expirados()
-        self.stdout.write(self.style.SUCCESS('Penalizaciones aplicadas a los turnos expirados.'))
+    def handle(self, *args, **kwargs):
+        penalizar_turnos_no_reclamados()
+        self.stdout.write(self.style.SUCCESS('Penalizaciones ejecutadas'))

@@ -6,7 +6,6 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 export async function login(username: string, password: string) {
   const res = await axios.post(`${API_URL}/token/`, { username, password });
   // Se espera que el backend envíe el token y datos del usuario
-  // Ejemplo de respuesta: { access: string, user: { id, username, rol, beneficiario, ... } }
   return res.data;
 }
 export interface User {
@@ -15,7 +14,6 @@ export interface User {
   rol: string;
   beneficiario: boolean;
   token: string;
-  // ...otros campos
 }
 
 export function useAuth() {

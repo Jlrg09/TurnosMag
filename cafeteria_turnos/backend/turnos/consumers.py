@@ -10,7 +10,6 @@ class TurnoActualConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard('turno_actual', self.channel_name)
 
     async def receive(self, text_data):
-        # No recibimos nada del cliente
         pass
 
     async def turno_cambiado(self, event):

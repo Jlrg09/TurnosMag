@@ -6,7 +6,7 @@ class Turno(models.Model):
     ESTADOS = (
         ('pendiente', 'Pendiente'),
         ('usado', 'Usado'),
-        ('entregado', 'Entregado'),  # <-- Agregado para el nuevo estado
+        ('entregado', 'Entregado'),  
         ('penalizado', 'Penalizado'),
         ('expirado', 'Expirado'),
     )
@@ -16,7 +16,7 @@ class Turno(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     generado_en = models.DateTimeField(auto_now_add=True)
     reclamado_en = models.DateTimeField(null=True, blank=True)
-    codigo_turno = models.CharField(max_length=10, unique=True, blank=True, null=True)  # NUEVO
+    codigo_turno = models.CharField(max_length=10, unique=True, blank=True, null=True)  
 
     def save(self, *args, **kwargs):
         if not self.codigo_turno:
@@ -38,6 +38,7 @@ class Penalizacion(models.Model):
     fecha = models.DateField()
     motivo = models.CharField(max_length=255)
     activa = models.BooleanField(default=True)
+    creada_en = models.DateTimeField(auto_now_add=True)  # NUEVO campo para medir los 15 minutos
 
     def __str__(self):
         return f"Penalización {self.usuario} {self.fecha} ({'activa' if self.activa else 'inactiva'})"

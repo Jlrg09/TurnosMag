@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-const logoUrl = "/logo192.png"; // Puedes cambiar la ruta si tienes otro logo
+const logoUrl = "/logo192.png"; 
 
 export default function LoginPage() {
   const { login } = useAuth();

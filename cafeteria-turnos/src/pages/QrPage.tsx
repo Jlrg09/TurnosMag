@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import QRCode from "react-qr-code";
 
@@ -9,13 +9,16 @@ const QrPage: React.FC = () => {
   const [showManual, setShowManual] = useState<boolean>(false);
   const [codigoInput, setCodigoInput] = useState<string>("");
   const [mensaje, setMensaje] = useState<string>("");
+  const [notificacion, setNotificacion] = useState<string | null>(null);
   const [turnoGenerado, setTurnoGenerado] = useState<null | {
     codigo_turno: string;
     estudiante: string;
     cafeteria: string;
     fecha: string;
   }>(null);
+  const timeoutNoti = useRef<NodeJS.Timeout | null>(null);
 
+  // QR dinámico auto-cambiable
   useEffect(() => {
     if (showManual) return;
     let interval = setInterval(() => {
@@ -27,6 +30,18 @@ const QrPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [showManual]);
 
+  // Notificación auto-ocultable
+  useEffect(() => {
+    if (notificacion) {
+      if (timeoutNoti.current) clearTimeout(timeoutNoti.current);
+      timeoutNoti.current = setTimeout(() => setNotificacion(null), 3500);
+      return () => {
+        if (timeoutNoti.current) clearTimeout(timeoutNoti.current);
+      };
+    }
+  }, [notificacion]);
+
+  // Generación manual (por código)
   const handleGenerarTurnoManual = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensaje("");
@@ -44,8 +59,10 @@ const QrPage: React.FC = () => {
         cafeteria: res.data.cafeteria,
         fecha: res.data.fecha,
       });
-      setMensaje("Turno generado correctamente.");
+      setMensaje("");
+      setNotificacion(`Turno generado: ${res.data.codigo_turno}`);
       setCodigoInput("");
+      setTimeout(() => setTurnoGenerado(null), 5000);
     } catch (err: any) {
       setMensaje(err.response?.data?.mensaje || "No se pudo generar el turno. Verifica el código.");
     }
@@ -64,6 +81,29 @@ const QrPage: React.FC = () => {
         padding: "0 16px",
       }}
     >
+      {/* Notificación flotante */}
+      {notificacion && (
+        <div style={{
+          position: "fixed",
+          top: 34,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "#33d17a",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: 20,
+          padding: "14px 34px",
+          borderRadius: 16,
+          boxShadow: "0 3px 14px #20793e44",
+          zIndex: 9999,
+          letterSpacing: 1,
+          transition: "opacity 0.4s",
+          opacity: notificacion ? 1 : 0,
+        }}>
+          {notificacion}
+        </div>
+      )}
+
       {/* Título superior */}
       <div style={{ width: "100%", maxWidth: 400, marginTop: 32, marginBottom: 24, textAlign: "center" }}>
         <h1 style={{
@@ -84,7 +124,8 @@ const QrPage: React.FC = () => {
           textAlign: "center",
           lineHeight: 1.25,
         }}>
-          Escanea el siguiente QR desde tu app o dispositivo para generar tu turno de cafetería.
+          Escanea el siguiente QR desde tu app o dispositivo para validar que puedes generar tu turno de cafetería.<br />
+          <span style={{ color: "#e67e22", fontWeight: 700 }}>Si no tienes celular, pide a un encargado que genere tu turno con tu código estudiantil.</span>
         </div>
       </div>
 
@@ -162,7 +203,7 @@ const QrPage: React.FC = () => {
               letterSpacing: 1
             }}
           >
-            ¿No tienes como escanear el QR? Genera tu turno con código aquí
+            ¿No tienes celular? Pide tu turno con tu código aquí
           </button>
         ) : (
           <button
@@ -187,7 +228,7 @@ const QrPage: React.FC = () => {
               letterSpacing: 1
             }}
           >
-            Generar con QR
+            Volver al QR dinámico
           </button>
         )}
 
@@ -209,7 +250,7 @@ const QrPage: React.FC = () => {
             }}
           >
             <label style={{ fontWeight: 700, color: "#178041", fontSize: 16 }}>
-              Ingresa tu código estudiantil:
+              Ingresa el código estudiantil:
             </label>
             <input
               value={codigoInput}

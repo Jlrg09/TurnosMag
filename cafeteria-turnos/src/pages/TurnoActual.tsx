@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
 
-// Interfaces
 interface Cafeteria {
   id: number;
   nombre: string;
@@ -24,13 +23,13 @@ interface Turno {
 function getCafeteriaColor(estado?: string) {
   switch (estado) {
     case 'abierta':
-      return '#26b100'; // verde
+      return '#26b100'; 
     case 'reabastecimiento':
-      return '#FFD600'; // amarillo
+      return '#FFD600'; 
     case 'cerrada':
-      return '#e74c3c'; // rojo
+      return '#e74c3c'; 
     default:
-      return '#e67e22'; // por defecto naranja
+      return '#e67e22'; 
   }
 }
 
@@ -39,15 +38,21 @@ function capitalize(str?: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+// Duración máxima del turno en segundos
+const TIEMPO_LIMITE_SEGUNDOS = 30;
+
 function TurnoActual() {
   const [turno, setTurno] = useState<Turno | null>(null);
   const [cafeteria, setCafeteria] = useState<Cafeteria | null>(null);
   const [alerta, setAlerta] = useState('');
   const [hora, setHora] = useState<string>(new Date().toLocaleTimeString());
   const [notificacion, setNotificacion] = useState<string>('');
+  const [expiraEn, setExpiraEn] = useState<number | null>(null);
   const prevTurnoId = useRef<number | null>(null);
 
-  // Actualiza la hora cada segundo
+  // Sound
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setHora(new Date().toLocaleTimeString());
@@ -55,13 +60,19 @@ function TurnoActual() {
     return () => clearInterval(timer);
   }, []);
 
-  // Cargar cafetería SIEMPRE, y actualizar cada 2s
+  // Sonido cuando cambia el turno
+  useEffect(() => {
+    if (notificacion && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play();
+    }
+  }, [notificacion]);
+
   useEffect(() => {
     const fetchCafeteria = () => {
-      fetch('http://localhost:8000/api/cafeteria/')
+      fetch('http://localhost:5173/api/cafeteria/')
         .then(res => res.json())
         .then(data => {
-          // Si es array, tomamos la primera. Si es objeto, lo usamos directo.
           if (Array.isArray(data) && data.length > 0) {
             setCafeteria(data[0]);
           } else if (data && data.id) {
@@ -73,13 +84,13 @@ function TurnoActual() {
         .catch(() => setCafeteria(null));
     };
     fetchCafeteria();
-    const interval = setInterval(fetchCafeteria, 2000); // Actualiza cada 2 segundos
+    const interval = setInterval(fetchCafeteria, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  // Función para cargar el turno actual
+  // Maneja obtención y cambio de turno, con notificación y sonido
   const cargarTurno = () => {
-    fetch('http://localhost:8000/api/turnos/actual/')
+    fetch('http://localhost:5173/api/turnos/actual/')
       .then(res => {
         if (!res.ok) throw new Error('No se pudo obtener el turno actual');
         return res.json();
@@ -111,15 +122,31 @@ function TurnoActual() {
 
   useEffect(() => {
     cargarTurno();
-    const interval = setInterval(cargarTurno, 2000); // Actualiza cada 2 segundos
-
+    const interval = setInterval(cargarTurno, 2000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line
   }, []);
 
-  // Logo puede ser una imagen local o por URL (ajusta el src según tu proyecto)
+  // Actualiza tiempo de expiración cada segundo
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    function updateExpira() {
+      if (turno && turno.generado_en) {
+        const generado = new Date(turno.generado_en).getTime();
+        const ahora = Date.now();
+        const diff = Math.floor((ahora - generado) / 1000);
+        setExpiraEn(Math.max(0, TIEMPO_LIMITE_SEGUNDOS - diff));
+      } else {
+        setExpiraEn(null);
+      }
+    }
+    updateExpira();
+    timer = setInterval(updateExpira, 1000);
+    return () => clearInterval(timer);
+  }, [turno]);
+
   const logoUrl = "/logo192.png";
 
-  // Estado de la cafetería y color
   const estadoCafeteria = capitalize(cafeteria?.estado);
   const estadoCirculo = getCafeteriaColor(cafeteria?.estado);
   const estadoColor = estadoCirculo;
@@ -133,6 +160,8 @@ function TurnoActual() {
       flexDirection: 'column',
       position: 'relative'
     }}>
+      {/* Audio para cambio de turno */}
+      <audio ref={audioRef} src="/turno-beep.mp3" preload="auto" />
       {/* Header */}
       <header style={{
         display: 'flex',
@@ -241,6 +270,20 @@ function TurnoActual() {
                 marginTop: 18
               }}>
                 Estudiante: <span style={{ fontWeight: 700 }}>{turno.usuario}</span>
+              </div>
+              {/* Tiempo de expiración */}
+              <div style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: expiraEn !== null && expiraEn <= 10 ? '#e67e22' : '#20793e',
+                marginTop: 18,
+                background: '#eaffd7',
+                borderRadius: 10,
+                padding: '7px 18px'
+              }}>
+                Tiempo para reclamar: {expiraEn !== null ? (
+                  expiraEn > 0 ? `${Math.floor(expiraEn / 60)}:${String(expiraEn % 60).padStart(2, '0')} segundos` : 'Expirado'
+                ) : '-'}
               </div>
             </>
           )}

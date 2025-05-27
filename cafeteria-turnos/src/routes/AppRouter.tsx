@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import AdminPage from "../pages/AdminPage";
 import EstudiantePage from "../pages/EstudiantePage";
 import VistaPage from "../pages/VistaPage";
-import LoginPage from "../pages/LoginPage"; // Opcional: agrega tu pantalla de login si existe
+import LoginPage from "../pages/LoginPage"; 
 import QRPage from "../pages/QrPage";
 
 

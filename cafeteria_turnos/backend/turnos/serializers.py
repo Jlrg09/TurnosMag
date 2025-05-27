@@ -1,16 +1,16 @@
 from rest_framework import serializers
 from .models import Turno, Penalizacion
-from cafeteria.serializers import CafeteriaSerializer  # Importa tu serializer de cafetería
+from cafeteria.serializers import CafeteriaSerializer  
 
 class TurnoSerializer(serializers.ModelSerializer):
     usuario = serializers.StringRelatedField()
-    cafeteria = CafeteriaSerializer()  # Usa el serializer completo
+    cafeteria = CafeteriaSerializer()  
 
     class Meta:
         model = Turno
         fields = [
             'id', 
-            'codigo_turno',  # NUEVO
+            'codigo_turno',  
             'usuario', 
             'cafeteria', 
             'fecha', 

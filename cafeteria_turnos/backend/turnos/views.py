@@ -11,44 +11,40 @@ import random
 import string
 from rest_framework.permissions import AllowAny
 
-from .utils import notificar_cambio_turno
+from .utils import notificar_cambio_turno, usuario_penalizado, penalizar_turnos_no_reclamados
 
 def generar_codigo_turno(longitud=6):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=longitud))
 
 def cafeteria_esta_abierta(cafeteria):
-    # Ahora depende únicamente del campo 'estado'
     return cafeteria.estado and cafeteria.estado.lower() == "abierto"
 
-# Crear turno (estudiante)
+# Crear turno (estudiante autenticado)
 class CrearTurnoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         usuario = request.user
-        # Permite generación de turno simulado para pruebas
         if request.data.get('qr') == "simulado":
             cafeteria = Cafeteria.objects.first()
             fecha = timezone.localdate()
-            if Penalizacion.objects.filter(usuario=usuario, activa=True).exists():
+            if usuario_penalizado(usuario):
                 return Response({'ok': False, 'mensaje': 'Usuario penalizado, no puede generar turno'}, status=status.HTTP_403_FORBIDDEN)
             if not cafeteria_esta_abierta(cafeteria):
                 return Response({'ok': False, 'mensaje': 'La cafetería está cerrada'}, status=status.HTTP_400_BAD_REQUEST)
             if Turno.objects.filter(usuario=usuario, fecha=fecha, cafeteria=cafeteria, estado__in=['pendiente', 'entregado', 'penalizado']).exists():
                 return Response({'ok': False, 'mensaje': 'Ya tienes un turno para hoy'}, status=status.HTTP_400_BAD_REQUEST)
-            # Generar código único alfanumérico
             codigo_generado = generar_codigo_turno()
             while Turno.objects.filter(codigo_turno=codigo_generado).exists():
                 codigo_generado = generar_codigo_turno()
             turno = Turno.objects.create(usuario=usuario, cafeteria=cafeteria, fecha=fecha, codigo_turno=codigo_generado)
             notificar_cambio_turno()
             return Response(TurnoSerializer(turno).data)
-        
+
         cafeteria_id = request.data.get('cafeteria_id')
         codigo_qr = request.data.get('codigo_qr')
         fecha = timezone.localdate()
 
-        # Validar QR real
         try:
             qr = QRActivo.objects.get(codigo=codigo_qr, cafeteria_id=cafeteria_id)
             if qr.expiracion < timezone.now():
@@ -56,7 +52,7 @@ class CrearTurnoView(APIView):
         except QRActivo.DoesNotExist:
             return Response({'ok': False, 'mensaje': 'QR inválido'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if Penalizacion.objects.filter(usuario=usuario, activa=True).exists():
+        if usuario_penalizado(usuario):
             return Response({'ok': False, 'mensaje': 'Usuario penalizado, no puede generar turno'}, status=status.HTTP_403_FORBIDDEN)
 
         cafeteria = Cafeteria.objects.get(id=cafeteria_id)
@@ -73,7 +69,37 @@ class CrearTurnoView(APIView):
         notificar_cambio_turno()
         return Response(TurnoSerializer(turno).data)
 
-# Listar turnos del usuario autenticado
+# NUEVA VISTA PÚBLICA PARA CREAR TURNO SIN AUTENTICACIÓN
+class CrearTurnoPublicoView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        codigo_estudiantil = request.data.get('codigo_estudiantil')
+        if not codigo_estudiantil:
+            return Response({'ok': False, 'mensaje': 'Debes proporcionar un código estudiantil'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            usuario = Usuario.objects.get(codigo_estudiantil=codigo_estudiantil)
+        except Usuario.DoesNotExist:
+            return Response({'ok': False, 'mensaje': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        cafeteria = Cafeteria.objects.first()
+        fecha = timezone.localdate()
+        if usuario_penalizado(usuario):
+            return Response({'ok': False, 'mensaje': 'Usuario penalizado, no puede generar turno'}, status=status.HTTP_403_FORBIDDEN)
+        if not cafeteria_esta_abierta(cafeteria):
+            return Response({'ok': False, 'mensaje': 'La cafetería está cerrada'}, status=status.HTTP_400_BAD_REQUEST)
+        if Turno.objects.filter(usuario=usuario, fecha=fecha, cafeteria=cafeteria, estado__in=['pendiente', 'entregado', 'penalizado']).exists():
+            return Response({'ok': False, 'mensaje': 'Ya tienes un turno para hoy'}, status=status.HTTP_400_BAD_REQUEST)
+        codigo_generado = generar_codigo_turno()
+        while Turno.objects.filter(codigo_turno=codigo_generado).exists():
+            codigo_generado = generar_codigo_turno()
+        turno = Turno.objects.create(usuario=usuario, cafeteria=cafeteria, fecha=fecha, codigo_turno=codigo_generado)
+        notificar_cambio_turno()
+        # Incluimos información extra para mostrar en el frontend
+        data = TurnoSerializer(turno).data
+        data["estudiante"] = usuario.get_full_name() or usuario.username
+        data["cafeteria"] = cafeteria.nombre if cafeteria else ""
+        return Response(data)
+
 class TurnosUsuarioView(generics.ListAPIView):
     serializer_class = TurnoSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -82,21 +108,19 @@ class TurnosUsuarioView(generics.ListAPIView):
         usuario = self.request.user
         return Turno.objects.filter(usuario=usuario).order_by('fecha', 'id')
 
-# Listar todos los turnos (admin)
 class TurnosListAdminView(generics.ListAPIView):
     serializer_class = TurnoSerializer
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
+        penalizar_turnos_no_reclamados()
         return Turno.objects.all().order_by('-fecha')
 
-# Detalle de un turno (admin)
 class TurnoDetailAdminView(generics.RetrieveAPIView):
     serializer_class = TurnoSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = Turno.objects.all()
 
-# Pasar/usar turno (admin)
 class PasarTurnoView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -113,7 +137,6 @@ class PasarTurnoView(APIView):
         except Turno.DoesNotExist:
             return Response({'ok': False, 'mensaje': 'Turno no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-# Entregar turno (admin)
 class EntregarTurnoAdminView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -130,13 +153,11 @@ class EntregarTurnoAdminView(APIView):
         except Turno.DoesNotExist:
             return Response({'ok': False, 'mensaje': 'Turno no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-# Eliminar turno (admin)
 class TurnoDeleteView(generics.DestroyAPIView):
     serializer_class = TurnoSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = Turno.objects.all()
 
-# Listar penalizaciones del usuario
 class PenalizacionesUsuarioView(generics.ListAPIView):
     serializer_class = PenalizacionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -145,7 +166,6 @@ class PenalizacionesUsuarioView(generics.ListAPIView):
         usuario = self.request.user
         return Penalizacion.objects.filter(usuario=usuario, activa=True)
 
-# Listar todas penalizaciones (admin)
 class PenalizacionesListAdminView(generics.ListAPIView):
     serializer_class = PenalizacionSerializer
     permission_classes = [permissions.IsAdminUser]
@@ -153,15 +173,32 @@ class PenalizacionesListAdminView(generics.ListAPIView):
     def get_queryset(self):
         return Penalizacion.objects.all().order_by('-fecha')
 
-# Eliminar/desactivar penalización (admin)
 class PenalizacionDeleteView(generics.DestroyAPIView):
     serializer_class = PenalizacionSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = Penalizacion.objects.all()
 
-# === Turno actual para frontend (API para mostrar y actualizar en tiempo real) ===
+class DespenalizarTurnoAdminView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, turno_id):
+        try:
+            turno = Turno.objects.get(id=turno_id)
+            usuario = turno.usuario
+            penalizaciones = Penalizacion.objects.filter(usuario=usuario, activa=True)
+            if not penalizaciones.exists():
+                return Response({'ok': False, 'mensaje': 'No hay penalizaciones activas para este usuario.'}, status=status.HTTP_400_BAD_REQUEST)
+            penalizaciones.update(activa=False)
+            # Cambiar el turno penalizado a expirado
+            if turno.estado == 'penalizado':
+                turno.estado = 'expirado'
+                turno.save()
+            return Response({'ok': True, 'mensaje': 'Penalización eliminada y turno marcado como expirado.'})
+        except Turno.DoesNotExist:
+            return Response({'ok': False, 'mensaje': 'Turno no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
 class TurnoActualView(APIView):
-    permission_classes = [AllowAny]  # <--- Así cualquiera puede acceder
+    permission_classes = [AllowAny]
 
     def get(self, request):
         turno = Turno.objects.filter(estado='pendiente').order_by('fecha', 'id').first()

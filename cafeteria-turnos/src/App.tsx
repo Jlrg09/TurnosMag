@@ -8,10 +8,9 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import QRPage from "./pages/QrPage";
 import TurnoActual from "./pages/TurnoActual";
 
-// Ruta protegida: solo deja pasar si hay usuario autenticado
 const PrivateRoute: React.FC<{ children: React.ReactNode; role?: string }> = ({ children, role }) => {
   const { auth, loading } = useAuth();
-  if (loading) return null; // Loader opcional
+  if (loading) return null; 
   if (!(auth && auth.access)) {
     return <Navigate to="/login" replace />;
   }
